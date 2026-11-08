@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Yggdrasil</string>
+    <string name="app_name">YggMesh</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="dns_configured_servers_hint">Use these DNS servers while Yggdrasil is running. Note that all DNS requests, including for non-Yggdrasil internet hostnames, will be sent to these servers.</string>
     <string name="dns_configured_servers_hint_empty">Yggdrasil will not configure any DNS servers when the service starts. All DNS requests will be resolved by the default resolver.</string>
@@ -58,9 +58,12 @@
     <string name="peer_connectivity_title">Peer Connectivity</string>
     <string name="discoverable_over_multicast">Discoverable over multicast</string>
     <string name="search_for_multicast_peers">Search for multicast peers</string>
+    <string name="nearby_over_bluetooth">Nearby devices over Bluetooth</string>
+    <string name="nearby_over_wifi_aware">Nearby devices over Wi-Fi Aware</string>
+    <string name="nearby_not_supported">%1$s (not on this device)</string>
     <string name="configured_peers_hint">Yggdrasil will automatically attempt to connect to configured peers when started. If you configure more than one peer, your device may carry traffic on behalf of other network nodes. Avoid this by configuring only a single peer.</string>
     <string name="peers_discovery_hint">You can find public peers by opening <a href="https://publicpeers.neilalexander.dev/">this link</a>.</string>
-    <string name="peer_connectivity_hint">Multicast peers will be discovered on the same Wi-Fi network or via USB. They must have the same password. Data charges may apply when using mobile data. You can prevent data usage in the device settings.</string>
+    <string name="peer_connectivity_hint">Multicast peers will be discovered on the same Wi-Fi network or via USB. They must have the same password. Data charges may apply when using mobile data. You can prevent data usage in the device settings. Nearby devices running this app are found and connected over Wi-Fi Aware or Bluetooth, with no shared Wi-Fi network needed.</string>
     <string name="peers_multicast_password_hint">Password</string>
     <string name="node_info">Node Info</string>
     <string name="device_name">Device Name</string>
@@ -90,4 +93,5 @@
     <string name="set_keys">Set your own key</string>
     <string name="save">Save</string>
     <string name="no_browser_found_toast">No browser found to open the URL!</string>
+    <string name="nearby_mesh_off">Nearby devices: Yggdrasil is not running</string>
 </resources>

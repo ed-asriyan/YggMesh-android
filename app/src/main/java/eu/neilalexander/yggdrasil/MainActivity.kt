@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.net.Uri
 import android.net.VpnService
 import android.os.Bundle
+import android.util.Log
 import android.view.ContextThemeWrapper
 import android.widget.Switch
 import android.widget.TextView
@@ -18,6 +19,7 @@ import androidx.core.content.edit
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import eu.neilalexander.yggdrasil.PacketTunnelProvider.Companion.STATE_INTENT
+import eu.neilalexander.yggdrasil.mesh.NearbyMesh
 import org.json.JSONArray
 
 const val APP_WEB_URL = "https://github.com/yggdrasil-network/yggdrasil-android"
@@ -37,7 +39,26 @@ class MainActivity : AppCompatActivity() {
     private fun start() {
         val intent = Intent(this, PacketTunnelProvider::class.java)
         intent.action = PacketTunnelProvider.ACTION_START
-        startService(intent)
+        try {
+            startService(intent)
+        } catch (e: IllegalStateException) {
+            // Resumed while not visible (under the lock screen): the app counts as in the background
+            Log.w("MainActivity", "Starting the service refused: $e")
+            return
+        }
+        requestMeshPermissionsIfNeeded()
+    }
+
+    private val requestMeshPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        reconnect(this)
+    }
+
+    private fun requestMeshPermissionsIfNeeded() {
+        // Only for the transports switched on in Peers
+        val missing = NearbyMesh.missingPermissions(this)
+        if (missing.isNotEmpty()) {
+            requestMeshPermissions.launch(missing)
+        }
     }
 
     private var startVpnActivity = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->

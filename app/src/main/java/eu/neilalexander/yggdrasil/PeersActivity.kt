@@ -18,11 +18,19 @@ import android.widget.Switch
 import android.widget.TableLayout
 import android.widget.TableRow
 import android.widget.TextView
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.edit
 import androidx.core.widget.doOnTextChanged
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
+import androidx.preference.PreferenceManager
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
+import eu.neilalexander.yggdrasil.mesh.NearbyMesh
+import eu.neilalexander.yggdrasil.mesh.BleTransport
+import eu.neilalexander.yggdrasil.mesh.PREF_KEY_NEARBY_BLE
+import eu.neilalexander.yggdrasil.mesh.PREF_KEY_NEARBY_WIFI_AWARE
+import eu.neilalexander.yggdrasil.mesh.WifiAwareTransport
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
@@ -41,6 +49,47 @@ class PeersActivity : AppCompatActivity() {
     private lateinit var multicastBeaconSwitch: Switch
     private lateinit var passwordEdit: EditText
     private lateinit var addPeerButton: ImageButton
+
+    private val requestMeshPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        reconnect(this)
+    }
+
+    /**
+     * A switch of one nearby transport. Greyed out where the device lacks it.
+     * A change applies to the running service at once.
+     */
+    private fun setUpNearbySwitch(
+        switchId: Int,
+        labelId: Int,
+        panelId: Int,
+        key: String,
+        labelText: Int,
+        supported: Boolean,
+        enabled: () -> Boolean,
+    ) {
+        val switch = findViewById<Switch>(switchId)
+        val label = findViewById<TextView>(labelId)
+        val panel = findViewById<TableRow>(panelId)
+        if (!supported) {
+            label.text = getString(R.string.nearby_not_supported, getString(labelText))
+            label.alpha = 0.5f
+            switch.isChecked = false
+            switch.isEnabled = false
+            panel.isEnabled = false
+            return
+        }
+        switch.isChecked = enabled()
+        switch.setOnCheckedChangeListener { _, isChecked ->
+            PreferenceManager.getDefaultSharedPreferences(this).edit { putBoolean(key, isChecked) }
+            val missing = NearbyMesh.missingPermissions(this)
+            if (isChecked && missing.isNotEmpty()) {
+                requestMeshPermissions.launch(missing)
+            } else {
+                reconnect(this)
+            }
+        }
+        panel.setOnClickListener { switch.toggle() }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -78,6 +127,19 @@ class PeersActivity : AppCompatActivity() {
         multicastListenPanel.setOnClickListener {
             multicastListenSwitch.toggle()
         }
+        setUpNearbySwitch(
+            R.id.enableNearbyBle, R.id.enableNearbyBleLabel, R.id.enableNearbyBlePanel,
+            PREF_KEY_NEARBY_BLE, R.string.nearby_over_bluetooth,
+            supported = BleTransport.isSupported(this),
+            enabled = { NearbyMesh.bleEnabled(this) },
+        )
+        setUpNearbySwitch(
+            R.id.enableNearbyWifiAware, R.id.enableNearbyWifiAwareLabel, R.id.enableNearbyWifiAwarePanel,
+            PREF_KEY_NEARBY_WIFI_AWARE, R.string.nearby_over_wifi_aware,
+            supported = WifiAwareTransport.isSupported(this),
+            enabled = { NearbyMesh.wifiAwareEnabled(this) },
+        )
+
         passwordEdit = findViewById(R.id.passwordEdit)
         passwordEdit.setText(config.multicastPassword)
 
@@ -249,6 +311,9 @@ class PeersActivity : AppCompatActivity() {
         override fun onReceive(context: Context?, intent: Intent) {
             when (intent.getStringExtra("type")) {
                 "state" -> {
+                    intent.getStringExtra("mesh")?.let {
+                        findViewById<TextView>(R.id.nearbyMeshStatus).text = it
+                    }
                     if (intent.hasExtra("peers")) {
                         val peers1 = intent.getStringExtra("peers")
                         //Log.i("PeersActivity", "Peers json: $peers1")

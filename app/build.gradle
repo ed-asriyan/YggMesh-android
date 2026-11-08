@@ -7,7 +7,7 @@ android {
     compileSdkVersion 34
 
     defaultConfig {
-        applicationId "eu.neilalexander.yggdrasil"
+        applicationId "me.asriyan.yggmesh"
         minSdkVersion 21
         targetSdkVersion 34
         versionCode 21
@@ -17,6 +17,14 @@ android {
     }
 
     signingConfigs {
+        // A fixed debug key, in the repository on purpose: debug APKs from CI and from
+        // any machine install over each other. Not for releases.
+        debug {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         create("yggdrasil") {
             // You need to specify either an absolute path or include the
             // keystore file in the same directory as the build.gradle file.

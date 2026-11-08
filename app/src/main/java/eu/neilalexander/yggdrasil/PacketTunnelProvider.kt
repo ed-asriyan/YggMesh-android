@@ -1,7 +1,11 @@
 package eu.neilalexander.yggdrasil
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.VpnService
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -11,6 +15,7 @@ import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import eu.neilalexander.yggdrasil.YggStateReceiver.Companion.YGG_STATE_INTENT
+import eu.neilalexander.yggdrasil.mesh.NearbyMesh
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.Inet6Address
@@ -23,6 +28,8 @@ import kotlin.concurrent.thread
 
 private const val TAG = "PacketTunnelProvider"
 const val SERVICE_NOTIFICATION_ID = 1000
+// How often "Connected" is re-evaluated for the UI: a cheap local broadcast
+private const val STATE_UPDATE_MS = 2_000
 
 open class PacketTunnelProvider: VpnService() {
     companion object {
@@ -47,6 +54,7 @@ open class PacketTunnelProvider: VpnService() {
     private var readerStream: FileInputStream? = null
     private var writerStream: FileOutputStream? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var nearbyMesh: NearbyMesh? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -104,7 +112,7 @@ open class PacketTunnelProvider: VpnService() {
         }
 
         val notification = createServiceNotification(this, State.Enabled)
-        startForeground(SERVICE_NOTIFICATION_ID, notification)
+        startForeground(notification)
 
         // Acquire multicast lock
         val wifi = applicationContext.getSystemService(WIFI_SERVICE) as WifiManager
@@ -113,7 +121,6 @@ open class PacketTunnelProvider: VpnService() {
             acquire()
         }
 
-        Log.d(TAG, config.getJSON().toString())
         try {
             yggdrasil.startJSON(config.getJSONByteArray(), networkInterfaces())
         } catch (e: Exception) {
@@ -184,15 +191,49 @@ open class PacketTunnelProvider: VpnService() {
             updater()
         }
 
+        // Always there: it runs only the transports switched on in Peers, which
+        // can change while the service runs (see connect()).
+        nearbyMesh = NearbyMesh(this, yggdrasil.publicKeyString, config.localListenPort).also { it.refresh() }
+
         var intent = Intent(YGG_STATE_INTENT)
         intent.putExtra("state", STATE_ENABLED)
         LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    /**
+     * Before Android 13 (Wi-Fi Aware) and 12 (BLE) the nearby mesh needs
+     * location, which a foreground service keeps once the app's UI is gone only
+     * with the location type; without it Wi-Fi Aware calls start failing then.
+     * From Android 14 the service is system exempted and needs no location.
+     */
+    private fun startForeground(notification: android.app.Notification) {
+        val type = when {
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE ->
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU &&
+                checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ->
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            else -> null
+        }
+        try {
+            if (type != null) {
+                startForeground(SERVICE_NOTIFICATION_ID, notification, type)
+                return
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Foreground service of type $type refused: $e")
+        }
+        startForeground(SERVICE_NOTIFICATION_ID, notification)
     }
 
     private fun stop() {
         if (!started.compareAndSet(true, false)) {
             return
         }
+
+        nearbyMesh?.stop()
+        nearbyMesh = null
 
         yggdrasil.stop()
 
@@ -242,6 +283,8 @@ open class PacketTunnelProvider: VpnService() {
         }
         yggdrasil.updateNetworkInterfaces(networkInterfaces())
         yggdrasil.retryPeersNow()
+        // Picks up permissions granted since the start.
+        nearbyMesh?.refresh()
     }
 
     /** Interfaces for multicast discovery: Android restricts their enumeration in native code. */
@@ -250,6 +293,10 @@ open class PacketTunnelProvider: VpnService() {
         val result = JSONArray()
         @Suppress("DEPRECATION")
         for (network in connectivity.allNetworks) {
+            // Not over Wi-Fi Aware data paths: the nearby mesh bridges those, and a
+            // second, multicast peering over the same data path ran beside it.
+            val transports = connectivity.getNetworkCapabilities(network)
+            if (transports?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI_AWARE) == true) continue
             val properties = connectivity.getLinkProperties(network) ?: continue
             val name = properties.interfaceName ?: continue
             val index = try { NetworkInterface.getByName(name)?.index } catch (_: Exception) { null } ?: continue
@@ -281,10 +328,11 @@ open class PacketTunnelProvider: VpnService() {
                 intent.putExtra("subnet", yggdrasil.subnetString)
                 intent.putExtra("pubkey", yggdrasil.publicKeyString)
                 intent.putExtra("peers", yggdrasil.peersJSON)
+                intent.putExtra("mesh", nearbyMesh?.status() ?: getString(R.string.nearby_mesh_off))
                 LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
             }
             val curTime = System.currentTimeMillis()
-            if (lastStateUpdate + 10000 < curTime) {
+            if (lastStateUpdate + STATE_UPDATE_MS < curTime) {
                 val intent = Intent(YGG_STATE_INTENT)
                 var state = STATE_ENABLED
                 if (yggdrasil.routingEntries > 0) {
