@@ -18,7 +18,6 @@ import androidx.core.content.edit
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import eu.neilalexander.yggdrasil.PacketTunnelProvider.Companion.STATE_INTENT
-import mobile.Mobile
 import org.json.JSONArray
 
 const val APP_WEB_URL = "https://github.com/yggdrasil-network/yggdrasil-android"
@@ -51,7 +50,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        findViewById<TextView>(R.id.versionValue).text = Mobile.getVersion()
+        findViewById<TextView>(R.id.versionValue).text = Yggdrasil.getVersion()
 
         enabledSwitch = findViewById(R.id.enableYggdrasil)
         enabledLabel = findViewById(R.id.yggdrasilStatusLabel)

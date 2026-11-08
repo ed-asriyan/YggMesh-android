@@ -19,27 +19,20 @@ Or get the APK from the [Releases Section](https://github.com/yggdrasil-network/
 
 ## Build Instructions
 
-* install gomobile
+The node is [Yggdrasil-ng](https://github.com/Revertron/Yggdrasil-ng), the Rust implementation of Yggdrasil, with JNI bindings in `libs/yggdrasil-ng-jni`.
+
+* install Rust with the Android targets and [cargo-ndk](https://github.com/bbqsrc/cargo-ndk), NDK r25 or newer, and JDK 17
 
 ```bash
-go install golang.org/x/mobile/cmd/gomobile@latest
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+cargo install cargo-ndk
+export ANDROID_NDK_HOME=/path/to/ndk
 ```
 
-* clone yggdrasil-android and initialize the yggdrasil-go submodule
+* build `libyggdrasil.so` for every ABI into `app/src/main/jniLibs`
 
 ```bash
-git clone https://github.com/yggdrasil-network/yggdrasil-android /tmp/yggdrasil-android
-cd /tmp/yggdrasil-android
-git submodule update --init
-```
-
-* build yggdrasil-go for android and copy over the built library
-
-```bash
-cd libs/yggdrasil-go
-./contrib/mobile/build -a
-cp yggdrasil.aar ../../app/libs/
-cd ../..
+./contrib/build-yggdrasil-ng.sh
 ```
 
 * build yggdrasil-android
@@ -48,34 +41,6 @@ cd ../..
 ./gradlew assembleRelease
 ```
 
-## Updating yggdrasil-go to the Latest Release
+## Updating Yggdrasil-ng
 
-The yggdrasil-go library is pinned as a git submodule in `libs/yggdrasil-go`. To update it to the latest release and rebuild:
-
-```bash
-cd libs/yggdrasil-go
-git fetch --tags
-git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
-```
-
-Then rebuild the library and copy it:
-
-```bash
-./contrib/mobile/build -a
-cp yggdrasil.aar ../../app/libs/
-cd ../..
-```
-
-Finally, commit the submodule update:
-
-```bash
-git add libs/yggdrasil-go
-git commit -m "Update yggdrasil-go to $(cd libs/yggdrasil-go && git describe --tags)"
-```
-
-note: you will need to use jdk-11 as jdk-16 `"doesn't work" ™`
-
-on debian/ubuntu you can set which jdk used with the `JAVA_HOME` env var:
-```
-export JAVA_HOME=/usr/lib/jvm/java-11-openjdk-amd64/
-```
+Yggdrasil-ng is pinned by its commit in `libs/yggdrasil-ng-jni/Cargo.toml` (`rev`, three times). Set the new commit there and `NG_VERSION` in `libs/yggdrasil-ng-jni/src/lib.rs`, then rebuild the library.

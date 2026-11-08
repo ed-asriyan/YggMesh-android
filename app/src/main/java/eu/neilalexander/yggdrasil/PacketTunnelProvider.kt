@@ -1,6 +1,7 @@
 package eu.neilalexander.yggdrasil
 
 import android.content.Intent
+import android.net.ConnectivityManager
 import android.net.VpnService
 import android.net.wifi.WifiManager
 import android.os.Build
@@ -10,8 +11,10 @@ import android.util.Log
 import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import androidx.preference.PreferenceManager
 import eu.neilalexander.yggdrasil.YggStateReceiver.Companion.YGG_STATE_INTENT
-import mobile.Yggdrasil
 import org.json.JSONArray
+import org.json.JSONObject
+import java.net.Inet6Address
+import java.net.NetworkInterface
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicBoolean
@@ -111,7 +114,16 @@ open class PacketTunnelProvider: VpnService() {
         }
 
         Log.d(TAG, config.getJSON().toString())
-        yggdrasil.startJSON(config.getJSONByteArray())
+        try {
+            yggdrasil.startJSON(config.getJSONByteArray(), networkInterfaces())
+        } catch (e: Exception) {
+            Log.e(TAG, "Starting Yggdrasil failed: $e")
+            multicastLock?.release()
+            started.set(false)
+            stopForeground(true)
+            stopSelf()
+            return
+        }
 
         val address = yggdrasil.addressString
         val builder = Builder()
@@ -228,7 +240,28 @@ open class PacketTunnelProvider: VpnService() {
         if (!started.get()) {
             return
         }
+        yggdrasil.updateNetworkInterfaces(networkInterfaces())
         yggdrasil.retryPeersNow()
+    }
+
+    /** Interfaces for multicast discovery: Android restricts their enumeration in native code. */
+    private fun networkInterfaces(): String {
+        val connectivity = getSystemService(CONNECTIVITY_SERVICE) as ConnectivityManager
+        val result = JSONArray()
+        @Suppress("DEPRECATION")
+        for (network in connectivity.allNetworks) {
+            val properties = connectivity.getLinkProperties(network) ?: continue
+            val name = properties.interfaceName ?: continue
+            val index = try { NetworkInterface.getByName(name)?.index } catch (_: Exception) { null } ?: continue
+            val addresses = JSONArray()
+            properties.linkAddresses
+                .map { it.address }
+                .filter { it is Inet6Address && it.isLinkLocalAddress }
+                .forEach { addresses.put(it.hostAddress?.substringBefore('%')) }
+            if (addresses.length() == 0) continue
+            result.put(JSONObject().put("Name", name).put("Index", index).put("Addrs", addresses))
+        }
+        return result.toString()
     }
 
     private fun updater() {
@@ -304,7 +337,8 @@ open class PacketTunnelProvider: VpnService() {
                 }
             } catch (e: Exception) {
                 Log.i(TAG, "Error in write: $e")
-                if (e.toString().contains("ENOBUFS")) {
+                // EINVAL: the TUN refused one malformed packet, the next ones may pass
+                if (e.toString().contains("ENOBUFS") || e.toString().contains("EINVAL")) {
                     //TODO Check this by some error code
                     //More info about this: https://github.com/AdguardTeam/AdguardForAndroid/issues/724
                     continue
