@@ -36,6 +36,12 @@ class Yggdrasil {
 
     fun retryPeersNow() = nativeRetryPeersNow(handle)
 
+    /** Adds a peer to the running node, as configured peers are. Returns null, or the error. */
+    fun addPeer(uri: String): String? = nativeAddPeer(handle, uri)
+
+    /** Removes a peer from the running node. Returns null, or the error. */
+    fun removePeer(uri: String): String? = nativeRemovePeer(handle, uri)
+
     fun updateNetworkInterfaces(interfaces: String) = nativeUpdateNetworkInterfaces(handle, interfaces)
 
     // Empty (or "[]") once the node is stopped
@@ -68,6 +74,8 @@ class Yggdrasil {
         @JvmStatic private external fun nativeTree(handle: Long): String?
         @JvmStatic private external fun nativeRoutingEntries(handle: Long): Long
         @JvmStatic private external fun nativeRetryPeersNow(handle: Long)
+        @JvmStatic private external fun nativeAddPeer(handle: Long, uri: String): String?
+        @JvmStatic private external fun nativeRemovePeer(handle: Long, uri: String): String?
         @JvmStatic private external fun nativeUpdateNetworkInterfaces(handle: Long, interfaces: String)
         @JvmStatic private external fun nativeGenerateConfig(): String
         @JvmStatic private external fun nativeVersion(): String

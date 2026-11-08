@@ -94,4 +94,15 @@
     <string name="save">Сохранить</string>
     <string name="no_browser_found_toast">Не найден браузер для открытия ссылки!</string>
     <string name="nearby_mesh_off">Устройства рядом: Yggdrasil не запущен</string>
+    <string name="public_peers_title">Публичные пиры</string>
+    <string name="public_peers_add_instance">Добавить инстанс yggpeers</string>
+    <string name="public_peers_count">Количество пиров</string>
+    <string name="public_peers_count_off">0 (выкл.)</string>
+    <string name="public_peers_check_interval">Интервал проверки (минуты)</string>
+    <string name="public_peers_rerank_interval">Интервал обновления (дни)</string>
+    <string name="public_peers_number_range">От %1$d до %2$d</string>
+    <string name="public_peers_instance_help">Базовый URL инстанса yggpeers, например https://yggpeers.fsky.io</string>
+    <string name="public_peers_instance_invalid">Нужен URL http(s)</string>
+    <string name="public_peers_remove_title">Удалить %1$s?</string>
+    <string name="public_peers_hint">Если у устройства есть свой интернет, оно само выбирает публичных пиров Yggdrasil, в дополнение к настроенным: из тех, кого большинство этих инстансов yggpeers считает живыми, самых быстрых. Они проверяются и выбираются заново с интервалами выше, без перезапуска. Без инстансов публичные пиры не выбираются.</string>
 </resources>

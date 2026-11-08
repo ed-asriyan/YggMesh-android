@@ -55,6 +55,7 @@ open class PacketTunnelProvider: VpnService() {
     private var writerStream: FileOutputStream? = null
     private var multicastLock: WifiManager.MulticastLock? = null
     private var nearbyMesh: NearbyMesh? = null
+    private var publicPeers: PublicPeers? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -194,6 +195,10 @@ open class PacketTunnelProvider: VpnService() {
         // Always there: it runs only the transports switched on in Peers, which
         // can change while the service runs (see connect()).
         nearbyMesh = NearbyMesh(this, yggdrasil.publicKeyString, config.localListenPort).also { it.refresh() }
+        publicPeers = PublicPeers(this, yggdrasil) {
+            val peers = config.getJSON().getJSONArray("Peers")
+            (0 until peers.length()).map { peers.getString(it) }
+        }.also { it.start() }
 
         var intent = Intent(YGG_STATE_INTENT)
         intent.putExtra("state", STATE_ENABLED)
@@ -232,6 +237,8 @@ open class PacketTunnelProvider: VpnService() {
             return
         }
 
+        publicPeers?.stop()
+        publicPeers = null
         nearbyMesh?.stop()
         nearbyMesh = null
 
@@ -285,6 +292,8 @@ open class PacketTunnelProvider: VpnService() {
         yggdrasil.retryPeersNow()
         // Picks up permissions granted since the start.
         nearbyMesh?.refresh()
+        // The network changed, or the public peers settings
+        publicPeers?.check()
     }
 
     /** Interfaces for multicast discovery: Android restricts their enumeration in native code. */
@@ -329,6 +338,7 @@ open class PacketTunnelProvider: VpnService() {
                 intent.putExtra("pubkey", yggdrasil.publicKeyString)
                 intent.putExtra("peers", yggdrasil.peersJSON)
                 intent.putExtra("mesh", nearbyMesh?.status() ?: getString(R.string.nearby_mesh_off))
+                intent.putExtra("publicPeers", publicPeers?.status ?: "")
                 LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
             }
             val curTime = System.currentTimeMillis()

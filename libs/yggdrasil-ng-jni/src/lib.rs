@@ -431,6 +431,30 @@ pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeRoutingEn
     runtime().block_on(node.core.routing_entries()) as jlong
 }
 
+/// Adds (`add` true) or removes a peer of the running node. Returns null, or the error.
+fn change_peer(mut env: JNIEnv, handle: jlong, uri: JString, add: bool) -> jstring {
+    let Ok(uri) = env.get_string(&uri) else { return std::ptr::null_mut() };
+    let uri: String = uri.into();
+    let Some(node) = node(handle) else { return std::ptr::null_mut() };
+    let result = runtime().block_on(async {
+        if add { node.core.add_peer(&uri).await } else { node.core.remove_peer(&uri).await }
+    });
+    match result {
+        Ok(()) => std::ptr::null_mut(),
+        Err(e) => env.new_string(e).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut()),
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeAddPeer(env: JNIEnv, _: JClass, handle: jlong, uri: JString) -> jstring {
+    change_peer(env, handle, uri, true)
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeRemovePeer(env: JNIEnv, _: JClass, handle: jlong, uri: JString) -> jstring {
+    change_peer(env, handle, uri, false)
+}
+
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeRetryPeersNow(_: JNIEnv, _: JClass, handle: jlong) {
     let Some(node) = node(handle) else { return };

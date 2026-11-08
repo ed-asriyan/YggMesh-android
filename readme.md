@@ -30,7 +30,7 @@ To get updates automatically, use [Obtainium](https://github.com/ImranR98/Obtain
 ### Configuring
 1. Open YggMesh and turn on **Enable Yggdrasil**. Accept the VPN request.
 2. Allow the permissions it asks for: nearby devices (or location on Android 10-12), which Wi-Fi Aware and Bluetooth need to find nearby phones.
-3. A phone with Internet: open **Peers**, tap **+** and add one or two [public peers](https://publicpeers.neilalexander.dev) close to you. A phone without Internet needs no peers: it gets everything through the phones around it.
+3. Nothing to do for peers: a phone with Internet picks public peers by itself (see Public peers below), and a phone without Internet gets everything through the phones around it. To add a peer of your own, open **Peers** and tap **+**.
 4. **DNS servers**: to open `.ygg` sites, pick DNS servers in this section.
 
 #### Peers
@@ -43,11 +43,21 @@ To get updates automatically, use [Obtainium](https://github.com/ImranR98/Obtain
 
 Below the switches, the diagnostics show what each transport is doing and how many links it holds. With both switched on, a phone keeps a link over each, and Yggdrasil sends traffic over the faster one.
 
+#### Public peers
+A phone with Internet of its own picks public Yggdrasil peers by itself, as [YggMesh routers](https://github.com/ed-asriyan/YggMesh) do, next to the peers you add by hand. The peers come from [yggpeers](https://gitfield.org/fsky/yggpeers) instances: only those a majority of the instances report up are used, one per host, and the fastest ones (by ping) are picked. They change while the app runs, with no restart: down ones are replaced at the next check, and the list is picked again at every forced refresh.
+
+| Setting | Meaning |
+|---------|---------|
+| yggpeers instances | Base URLs of the instances, `https://yggpeers.fsky.io` by default. Add your own or remove them; with none, no public peers are picked. |
+| Number of peers | How many public peers to pick, 2 by default. 0 switches it off. |
+| Check interval (minutes) | How often to check that the picked peers are alive, 1-1440, 30 by default. Down ones are replaced. Also checked when the network changes. |
+| Forced refresh interval (days) | How often to pick the peers again even if all are alive, 1-90, 7 by default. |
+
 ## See it in action
 To see the mesh working, you need two phones, at least one of them with Android 10+ and Wi-Fi Aware or Bluetooth.
 
 1. Install YggMesh on both phones.
-2. **Phone A** has Internet: add a public peer to it, as above.
+2. **Phone A** has Internet: it picks public peers by itself.
 3. **Phone B** has none: forget its Wi-Fi networks, turn off mobile data, and add no peers.
 4. Turn on Yggdrasil on both and keep them near each other. In a minute, **Peers** on phone B shows phone A as connected.
 5. Open a public Yggdrasil website on phone B, e.g. from https://yggdrasil-network.github.io/services.html.

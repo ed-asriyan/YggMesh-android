@@ -94,4 +94,15 @@
     <string name="save">Save</string>
     <string name="no_browser_found_toast">No browser found to open the URL!</string>
     <string name="nearby_mesh_off">Nearby devices: Yggdrasil is not running</string>
+    <string name="public_peers_title">Public peers</string>
+    <string name="public_peers_add_instance">Add yggpeers instance</string>
+    <string name="public_peers_count">Number of peers</string>
+    <string name="public_peers_count_off">0 (off)</string>
+    <string name="public_peers_check_interval">Check interval (minutes)</string>
+    <string name="public_peers_rerank_interval">Forced refresh interval (days)</string>
+    <string name="public_peers_number_range">From %1$d to %2$d</string>
+    <string name="public_peers_instance_help">Base URL of a yggpeers instance, e.g. https://yggpeers.fsky.io</string>
+    <string name="public_peers_instance_invalid">Must be an http(s) URL</string>
+    <string name="public_peers_remove_title">Remove %1$s?</string>
+    <string name="public_peers_hint">With Internet of its own, this device picks public Yggdrasil peers by itself, next to the configured ones: from the peers that a majority of these yggpeers instances report up, the fastest. They are checked and picked again at the intervals above, with no restart. Without instances, no public peers are picked.</string>
 </resources>
