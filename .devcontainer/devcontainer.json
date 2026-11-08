@@ -1,0 +1,31 @@
+{
+  "name": "YggMesh Android",
+  "build": {
+    "dockerfile": "Dockerfile",
+    // Label the built image linux/amd64 too: with only FROM --platform it is labelled
+    // for the host (arm64), so `docker run --platform=linux/amd64` finds no image and tries to pull
+    "options": ["--platform=linux/amd64"]
+  },
+  "remoteUser": "vscode",
+  "runArgs": ["--platform=linux/amd64"],
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {},
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {}
+  },
+  "overrideFeatureInstallOrder": [
+    "ghcr.io/devcontainers/features/node",
+    "ghcr.io/anthropics/devcontainer-features/claude-code"
+  ],
+  // Keeps the Claude Code login across container rebuilds
+  "mounts": [
+    "source=yggmesh-claude-config,target=/home/vscode/.claude,type=volume"
+  ],
+  "containerEnv": {
+    "CLAUDE_CONFIG_DIR": "/home/vscode/.claude"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": ["fwcd.kotlin", "rust-lang.rust-analyzer"]
+    }
+  }
+}

@@ -60,7 +60,7 @@ If the site loads, phone B reaches the Yggdrasil network only through phone A.
 Fork this repository and run the **Build** workflow from the Actions tab on any branch. It builds a debug APK and uploads it as an artifact of the run (`yggmesh-debug-<branch>-<run>`). Debug builds are signed with the key in `app/debug.keystore`, so they install over each other.
 
 ### Option B: Local build
-You need:
+Open the repository in VS Code and choose "Reopen in Container": the [dev container](.devcontainer) has everything needed. Or install it yourself:
 
 * Rust with the Android targets and [cargo-ndk](https://github.com/bbqsrc/cargo-ndk), NDK r25 or newer, JDK 17
 
@@ -81,6 +81,8 @@ export ANDROID_NDK_HOME=/path/to/ndk
 ```bash
 ./gradlew assembleDebug
 ```
+
+[docs/device-testing.md](docs/device-testing.md) describes testing on phones over ADB.
 
 ### Updating Yggdrasil-ng
 Yggdrasil-ng is pinned by its commit in `libs/yggdrasil-ng-jni/Cargo.toml` (`rev`, three times). Set the new commit there and `NG_VERSION` in `libs/yggdrasil-ng-jni/src/lib.rs`, then rebuild the library.
