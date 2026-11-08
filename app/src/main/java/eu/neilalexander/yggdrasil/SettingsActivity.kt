@@ -107,12 +107,11 @@ class SettingsActivity : AppCompatActivity() {
             builder.show()
         }
 
-        publicKeyLabel.setOnLongClickListener {
+        publicKeyLabel.setOnClickListener {
             val clipboard: ClipboardManager = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
             val clip = ClipData.newPlainText("public key", publicKeyLabel.text)
             clipboard.setPrimaryClip(clip)
             Toast.makeText(applicationContext,R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show()
-            true
         }
 
         updateView()

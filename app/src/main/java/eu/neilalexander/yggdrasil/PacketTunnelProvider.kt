@@ -56,6 +56,7 @@ open class PacketTunnelProvider: VpnService() {
     private var multicastLock: WifiManager.MulticastLock? = null
     private var nearbyMesh: NearbyMesh? = null
     private var publicPeers: PublicPeers? = null
+    private var clearnet: ClearnetMonitor? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -133,6 +134,42 @@ open class PacketTunnelProvider: VpnService() {
             return
         }
 
+        clearnet = ClearnetMonitor(this, yggdrasil, yggdrasil.publicKeyString, yggdrasil.addressString) {
+            establishTun()
+        }
+        if (!establishTun()) {
+            stop()
+            return
+        }
+
+        writerThread = thread {
+            writer()
+        }
+        updateThread = thread {
+            updater()
+        }
+        clearnet?.start()
+
+        // Always there: it runs only the transports switched on in Peers, which
+        // can change while the service runs (see connect()).
+        nearbyMesh = NearbyMesh(this, yggdrasil.publicKeyString, config.localListenPort).also { it.refresh() }
+        publicPeers = PublicPeers(this, yggdrasil) {
+            val peers = config.getJSON().getJSONArray("Peers")
+            (0 until peers.length()).map { peers.getString(it) }
+        }.also { it.start() }
+
+        var intent = Intent(YGG_STATE_INTENT)
+        intent.putExtra("state", STATE_ENABLED)
+        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+    }
+
+    /**
+     * Creates the TUN for what the clearnet mode routes now, or replaces it when
+     * that changes. Returns false if the system refuses.
+     */
+    @Synchronized
+    private fun establishTun(): Boolean {
+        val routeAll = clearnet?.routeAll == true
         val address = yggdrasil.addressString
         val builder = Builder()
             .addAddress(address, 7)
@@ -171,38 +208,30 @@ open class PacketTunnelProvider: VpnService() {
         if (preferences.getBoolean(KEY_ENABLE_CHROME_FIX, false)) {
             builder.addRoute("2001:4860:4860::8888", 128)
         }
-
-        parcel = builder.establish()
-        val parcel = parcel
-        if (parcel == null || !parcel.fileDescriptor.valid()) {
-            stop()
-            return
+        if (routeAll) {
+            // All IPv4 goes to the exit, and IPv6 outside Yggdrasil nowhere: exits
+            // carry IPv4 only, and it would show the IP of this device. The sockets
+            // of this app, the peerings among them, stay outside of the VPN:
+            // through it they would need Yggdrasil to reach Yggdrasil.
+            builder.addAddress(Clearnet.ipv4ForKey(yggdrasil.publicKeyString), 32)
+                .addRoute("0.0.0.0", 0)
+                .addRoute("::", 0)
+                .addDisallowedApplication(packageName)
+            Clearnet.dnsServers.forEach { builder.addDnsServer(it) }
         }
 
-        readerStream = FileInputStream(parcel.fileDescriptor)
-        writerStream = FileOutputStream(parcel.fileDescriptor)
-
+        val new = builder.establish()
+        if (new == null || !new.fileDescriptor.valid()) return false
+        val old = parcel
+        parcel = new
+        val input = FileInputStream(new.fileDescriptor)
+        readerStream = input
+        writerStream = FileOutputStream(new.fileDescriptor)
         readerThread = thread {
-            reader()
+            reader(input)
         }
-        writerThread = thread {
-            writer()
-        }
-        updateThread = thread {
-            updater()
-        }
-
-        // Always there: it runs only the transports switched on in Peers, which
-        // can change while the service runs (see connect()).
-        nearbyMesh = NearbyMesh(this, yggdrasil.publicKeyString, config.localListenPort).also { it.refresh() }
-        publicPeers = PublicPeers(this, yggdrasil) {
-            val peers = config.getJSON().getJSONArray("Peers")
-            (0 until peers.length()).map { peers.getString(it) }
-        }.also { it.start() }
-
-        var intent = Intent(YGG_STATE_INTENT)
-        intent.putExtra("state", STATE_ENABLED)
-        LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
+        try { old?.close() } catch (_: Exception) {}
+        return true
     }
 
     /**
@@ -237,6 +266,8 @@ open class PacketTunnelProvider: VpnService() {
             return
         }
 
+        clearnet?.stop()
+        clearnet = null
         publicPeers?.stop()
         publicPeers = null
         nearbyMesh?.stop()
@@ -294,6 +325,7 @@ open class PacketTunnelProvider: VpnService() {
         nearbyMesh?.refresh()
         // The network changed, or the public peers settings
         publicPeers?.check()
+        clearnet?.check()
     }
 
     /** Interfaces for multicast discovery: Android restricts their enumeration in native code. */
@@ -339,6 +371,7 @@ open class PacketTunnelProvider: VpnService() {
                 intent.putExtra("peers", yggdrasil.peersJSON)
                 intent.putExtra("mesh", nearbyMesh?.status() ?: getString(R.string.nearby_mesh_off))
                 intent.putExtra("publicPeers", publicPeers?.status ?: "")
+                intent.putExtra("clearnet", clearnet?.status ?: "")
                 LocalBroadcastManager.getInstance(this).sendBroadcast(intent)
             }
             val curTime = System.currentTimeMillis()
@@ -390,13 +423,15 @@ open class PacketTunnelProvider: VpnService() {
             }
             try {
                 val len = yggdrasil.recvBuffer(buf)
-                if (len > 0) {
+                if (len > 0 && clearnet?.onPacket(buf, len.toInt()) != true) {
                     writerStream.write(buf, 0, len.toInt())
                 }
             } catch (e: Exception) {
                 Log.i(TAG, "Error in write: $e")
                 // EINVAL: the TUN refused one malformed packet, the next ones may pass
-                if (e.toString().contains("ENOBUFS") || e.toString().contains("EINVAL")) {
+                if (e.toString().contains("ENOBUFS") || e.toString().contains("EINVAL") ||
+                    this.writerStream !== writerStream // the TUN was replaced meanwhile
+                ) {
                     //TODO Check this by some error code
                     //More info about this: https://github.com/AdguardTeam/AdguardForAndroid/issues/724
                     continue
@@ -410,30 +445,43 @@ open class PacketTunnelProvider: VpnService() {
         }
     }
 
-    private fun reader() {
+    private fun reader(input: FileInputStream) {
         val b = ByteArray(65535)
-        reads@ while (started.get()) {
-            val readerStream = readerStream
-            val readerThread = readerThread
-            if (readerThread == null || readerStream == null) {
-                Log.i(TAG, "Read thread or stream is null")
-                break@reads
-            }
-            if (Thread.currentThread().isInterrupted ||!readerStream.fd.valid()) {
+        // Until the TUN is replaced (see establishTun)
+        reads@ while (started.get() && readerStream === input) {
+            if (Thread.currentThread().isInterrupted || !input.fd.valid()) {
                 Log.i(TAG, "Read thread interrupted or file descriptor is invalid")
                 break@reads
             }
             try {
-                val n = readerStream.read(b)
+                val n = input.read(b)
+                if (n <= 0) continue
+                if (refuse(b, n)) continue
                 yggdrasil.sendBuffer(b, n.toLong())
             } catch (e: Exception) {
                 Log.i(TAG, "Error in sendBuffer: $e")
                 break@reads
             }
         }
-        readerStream?.let {
-            it.close()
-            readerStream = null
+        try { input.close() } catch (_: Exception) {}
+    }
+
+    /**
+     * Answers a packet this device has no way to send while the VPN routes
+     * everything: apps fail, or fall back to IPv4, at once instead of on a timeout.
+     */
+    private fun refuse(packet: ByteArray, len: Int): Boolean {
+        val clearnet = clearnet ?: return false
+        if (!clearnet.routeAll) return false
+        val version = (packet[0].toInt() and 0xf0) shr 4
+        val blocked = when {
+            version == 4 -> !clearnet.hasExit
+            version == 6 && len >= 40 -> !isYggdrasilPacket(packet)
+            else -> false
         }
+        if (!blocked) return false
+        val reply = unreachableFor(packet, len) ?: return true
+        try { writerStream?.write(reply) } catch (_: Exception) {}
+        return true
     }
 }

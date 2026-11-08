@@ -10,7 +10,7 @@ name = "yggdrasil"
 crate-type = ["cdylib"]
 
 [dependencies]
-yggdrasil = { git = "https://github.com/Revertron/Yggdrasil-ng", rev = "c9a54f1587bb133a06072596484c972a336db0d2", default-features = false }
+yggdrasil = { git = "https://github.com/Revertron/Yggdrasil-ng", rev = "c9a54f1587bb133a06072596484c972a336db0d2", default-features = false, features = ["ckr"] }
 ironwood = { git = "https://github.com/Revertron/Yggdrasil-ng", rev = "c9a54f1587bb133a06072596484c972a336db0d2" }
 jni = "0.21"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }

@@ -36,6 +36,9 @@ class Yggdrasil {
 
     fun retryPeersNow() = nativeRetryPeersNow(handle)
 
+    /** Sends all IPv4 to the exit from [address] (a CIDR); with no exit, to nowhere. Returns null, or the error. */
+    fun setExit(address: String, exit: String?): String? = nativeSetExit(handle, address, exit)
+
     /** Adds a peer to the running node, as configured peers are. Returns null, or the error. */
     fun addPeer(uri: String): String? = nativeAddPeer(handle, uri)
 
@@ -62,6 +65,9 @@ class Yggdrasil {
 
         fun getVersion(): String = nativeVersion()
 
+        /** The Yggdrasil address of a public key in hex, or null if it is not one. */
+        fun addressForKey(key: String): String? = nativeAddressForKey(key)
+
         @JvmStatic private external fun nativeStart(config: String, interfaces: String): Long
         @JvmStatic private external fun nativeStop(handle: Long)
         @JvmStatic private external fun nativeSend(handle: Long, buf: ByteArray, len: Int)
@@ -74,6 +80,8 @@ class Yggdrasil {
         @JvmStatic private external fun nativeTree(handle: Long): String?
         @JvmStatic private external fun nativeRoutingEntries(handle: Long): Long
         @JvmStatic private external fun nativeRetryPeersNow(handle: Long)
+        @JvmStatic private external fun nativeSetExit(handle: Long, address: String, exit: String?): String?
+        @JvmStatic private external fun nativeAddressForKey(key: String): String?
         @JvmStatic private external fun nativeAddPeer(handle: Long, uri: String): String?
         @JvmStatic private external fun nativeRemovePeer(handle: Long, uri: String): String?
         @JvmStatic private external fun nativeUpdateNetworkInterfaces(handle: Long, interfaces: String)

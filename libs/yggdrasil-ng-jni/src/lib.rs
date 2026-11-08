@@ -10,7 +10,7 @@ use std::ffi::CString;
 use std::io::Write;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicI64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use ed25519_dalek::SigningKey;
 use jni::JNIEnv;
@@ -18,8 +18,9 @@ use jni::objects::{JByteArray, JClass, JString};
 use jni::sys::{jint, jlong, jstring};
 use serde_json::{Value, json};
 use tokio::runtime::Runtime;
+use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
-use yggdrasil::config::{Config, MulticastInterfaceConfig};
+use yggdrasil::config::{Config, MulticastInterfaceConfig, TunnelRoutingConfig};
 use yggdrasil::core::Core;
 use yggdrasil::ipv6rwc::ReadWriteCloser;
 use yggdrasil::multicast::NetworkInterface;
@@ -29,8 +30,17 @@ const NG_VERSION: &str = "0.3.1";
 
 struct Node {
     core: Arc<Core>,
-    rwc: Arc<ReadWriteCloser>,
+    // Replaced when the exit changes (see set_exit); the links stay up
+    rwc: Arc<RwLock<Arc<ReadWriteCloser>>>,
+    // Wakes the blocked reader of the TUN packets to use the new rwc
+    rwc_changed: Arc<Notify>,
     stop: CancellationToken,
+}
+
+impl Node {
+    fn rwc(&self) -> Arc<ReadWriteCloser> {
+        self.rwc.read().unwrap().clone()
+    }
 }
 
 fn runtime() -> &'static Runtime {
@@ -161,8 +171,9 @@ fn start(config_json: &str, interfaces_json: &str) -> Result<Node, String> {
         core.init_links().await;
         core.start().await;
 
-        let rwc = ReadWriteCloser::new(core.clone(), core.mtu(), None);
-        core.set_path_notify(rwc.clone());
+        let first = ReadWriteCloser::new(core.clone(), core.mtu(), None, None);
+        core.set_path_notify(first.clone());
+        let rwc = Arc::new(RwLock::new(first));
 
         let stop = CancellationToken::new();
         // Peers' keys are known from the handshake: seed them so that the first
@@ -177,8 +188,9 @@ fn start(config_json: &str, interfaces_json: &str) -> Result<Node, String> {
                     tokio::select! {
                         _ = stop.cancelled() => break,
                         _ = ticker.tick() => {
+                            let current = rwc.read().unwrap().clone();
                             for key in core.get_peer_keys().await {
-                                rwc.update_key(key).await;
+                                current.update_key(key).await;
                             }
                         }
                     }
@@ -201,7 +213,7 @@ fn start(config_json: &str, interfaces_json: &str) -> Result<Node, String> {
         }
         tracing::info!("Your IPv6 address is {}", core.address());
         tracing::info!("Your public key is {}", hex::encode(core.public_key()));
-        Ok(Node { core, rwc, stop })
+        Ok(Node { core, rwc, rwc_changed: Arc::new(Notify::new()), stop })
     })
 }
 
@@ -324,7 +336,7 @@ pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeStop(_: J
     node.stop.cancel();
     runtime().block_on(async {
         node.core.close_multicast().await;
-        node.rwc.cleanup().await;
+        node.rwc().cleanup().await;
         let _ = node.core.close().await;
     });
 }
@@ -344,7 +356,7 @@ pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeSend(
         return;
     }
     let Some(node) = node(handle) else { return };
-    let _ = runtime().block_on(node.rwc.write(&packet));
+    let _ = runtime().block_on(node.rwc().write(&packet));
 }
 
 /// Blocks until a packet for the TUN arrives. Returns its length, or -1 once stopped.
@@ -364,12 +376,16 @@ pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeRecv(
     // starts after the type byte): copying from 0 shifted every packet by a
     // byte, and the TUN refused them (EINVAL).
     let range = runtime().block_on(async {
-        tokio::select! {
-            _ = node.stop.cancelled() => None,
-            r = node.rwc.read(&mut packet) => r.ok().map(|p| {
-                let start = p.as_ptr() as usize - base;
-                start..start + p.len()
-            }),
+        loop {
+            let rwc = node.rwc();
+            tokio::select! {
+                _ = node.stop.cancelled() => return None,
+                _ = node.rwc_changed.notified() => continue,
+                r = rwc.read(&mut packet) => return r.ok().map(|p| {
+                    let start = p.as_ptr() as usize - base;
+                    start..start + p.len()
+                }),
+            }
         }
     });
     let Some(range) = range else { return -1 };
@@ -408,7 +424,7 @@ pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativePublicKey
 
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeMtu(_: JNIEnv, _: JClass, handle: jlong) -> jlong {
-    node(handle).map_or(0, |n| n.rwc.mtu() as jlong)
+    node(handle).map_or(0, |n| n.rwc().mtu() as jlong)
 }
 
 #[unsafe(no_mangle)]
@@ -429,6 +445,60 @@ pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeTree(mut 
 pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeRoutingEntries(_: JNIEnv, _: JClass, handle: jlong) -> jlong {
     let Some(node) = node(handle) else { return 0 };
     runtime().block_on(node.core.routing_entries()) as jlong
+}
+
+/// Sends all IPv4 to the exit with public key `exit`, from `address` (a CIDR), by
+/// Crypto-Key Routing; or to nowhere with no exit. The node keeps running, so
+/// its links stay up, unlike a restart with a new config: only the rwc, which
+/// holds the CKR table, is replaced.
+fn set_exit(node: &Node, address: &str, exit: Option<&str>) -> Result<(), String> {
+    let mut routing = TunnelRoutingConfig::default();
+    routing.install_system_routes = false;
+    let config = match exit {
+        Some(exit) => {
+            routing.enable = true;
+            routing.ip_addresses = vec![address.to_string()];
+            // "~": CKR only, the routes are VpnService's
+            routing.remote_subnets.insert(exit.to_lowercase(), vec!["~0.0.0.0/0".to_string()]);
+            // ReadWriteCloser panics on a config it rejects: check it beforehand
+            yggdrasil::ckr::CryptoKey::new(&routing, node.core.public_key())?;
+            Some(&routing)
+        }
+        None => None,
+    };
+    let new = ReadWriteCloser::new(node.core.clone(), node.core.mtu(), config, None);
+    node.core.set_path_notify(new.clone());
+    *node.rwc.write().unwrap() = new;
+    node.rwc_changed.notify_one();
+    Ok(())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeSetExit(
+    mut env: JNIEnv,
+    _: JClass,
+    handle: jlong,
+    address: JString,
+    exit: JString,
+) -> jstring {
+    let Ok(address) = env.get_string(&address).map(String::from) else { return std::ptr::null_mut() };
+    let exit: Option<String> = if exit.is_null() { None } else { env.get_string(&exit).ok().map(String::from) };
+    let Some(node) = node(handle) else { return std::ptr::null_mut() };
+    let result = runtime().block_on(async { set_exit(&node, &address, exit.as_deref()) });
+    match result {
+        Ok(()) => std::ptr::null_mut(),
+        Err(e) => env.new_string(e).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut()),
+    }
+}
+
+/// The Yggdrasil address of a public key in hex, or null if it is not one.
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_eu_neilalexander_yggdrasil_Yggdrasil_nativeAddressForKey(mut env: JNIEnv, _: JClass, key: JString) -> jstring {
+    let Ok(key) = env.get_string(&key).map(String::from) else { return std::ptr::null_mut() };
+    let Ok(bytes) = hex::decode(&key) else { return std::ptr::null_mut() };
+    let Ok(bytes) = <[u8; 32]>::try_from(bytes.as_slice()) else { return std::ptr::null_mut() };
+    let s = yggdrasil::address::addr_for_key(&bytes).to_string();
+    java_string(&mut env, &s)
 }
 
 /// Adds (`add` true) or removes a peer of the running node. Returns null, or the error.

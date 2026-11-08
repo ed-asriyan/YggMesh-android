@@ -318,6 +318,39 @@
                         </androidx.appcompat.widget.LinearLayoutCompat>
 
                         <androidx.appcompat.widget.LinearLayoutCompat
+                            android:id="@+id/clearnetTableRow"
+                            style="@style/SelectableItemStyle">
+
+                            <TextView
+                                android:id="@+id/clearnetLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/clearnet_title"
+                                android:textColor="?attr/textDefault" />
+
+                            <Space
+                                android:layout_width="320dp"
+                                android:layout_height="match_parent"
+                                android:layout_weight="2" />
+
+                            <TextView
+                                android:id="@+id/clearnetValue"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+
+                            <ImageView
+                                android:id="@+id/clearnetChevron"
+                                android:layout_width="wrap_content"
+                                android:layout_height="match_parent"
+                                android:layout_marginLeft="2pt"
+                                android:alpha="0.4"
+                                android:scaleType="fitEnd"
+                                android:scaleX="1.2"
+                                android:scaleY="1.2"
+                                app:srcCompat="@drawable/ic_baseline_chevron_right_24" />
+
+                        </androidx.appcompat.widget.LinearLayoutCompat>
+                        <androidx.appcompat.widget.LinearLayoutCompat
                             android:id="@+id/settingsTableRow"
                             style="@style/SelectableItemStyle">
 

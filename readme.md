@@ -10,7 +10,7 @@ This app is the Android side of [YggMesh](https://github.com/ed-asriyan/YggMesh)
 - The phone runs a [Yggdrasil](https://yggdrasil-network.github.io) node ([Yggdrasil-ng](https://github.com/Revertron/Yggdrasil-ng), its Rust implementation) as a VPN, so any app on it can reach Yggdrasil IPv6 addresses. Your usual traffic still goes through your provider.
 - Phones running the app find each other and peer with no user interaction, over [Wi-Fi Aware](https://developer.android.com/develop/connectivity/wifi/wifi-aware) and Bluetooth Low Energy. No shared Wi-Fi network, router or Internet is needed. Phones out of range of each other still reach each other through the ones in between.
 - A phone with Internet (mobile data, Wi-Fi) also peers with public Yggdrasil nodes, and carries the Yggdrasil traffic of the phones around it.
-- Planned: access to clearnet (the Internet) websites through the mesh, via [YggMesh exit nodes](https://github.com/ed-asriyan/YggMesh-exit-node), so that a phone with no Internet of its own reaches the Internet through any nearby phone that has it.
+- Access to clearnet (the Internet) websites through the mesh, via [YggMesh exit nodes](https://github.com/ed-asriyan/YggMesh-exit-node): a phone with no Internet of its own reaches the Internet through any nearby phone that has it.
 - It peers with [YggMesh routers](https://github.com/ed-asriyan/YggMesh) and any other Yggdrasil node too.
 
 All traffic over Yggdrasil is encrypted end-to-end. It is not anonymous: direct peers see your IP address, and nearby phones see that your phone runs the app.
@@ -52,6 +52,19 @@ A phone with Internet of its own picks public Yggdrasil peers by itself, as [Ygg
 | Number of peers | How many public peers to pick, 2 by default. 0 switches it off. |
 | Check interval (minutes) | How often to check that the picked peers are alive, 1-1440, 30 by default. Down ones are replaced. Also checked when the network changes. |
 | Forced refresh interval (days) | How often to pick the peers again even if all are alive, 1-90, 7 by default. |
+
+#### Clearnet (the Internet)
+The **Clearnet** screen on the main screen: what the IPv4 traffic of the phone uses.
+
+| Field | Meaning |
+|-------|---------|
+| Mode | `WAN`: the Internet of this phone (default).<br>`Exits`: only through the exits, never your own Internet, so your IP is never used; with no working exit there is no clearnet.<br>`WAN, then exits`: your own Internet while it works, the exits otherwise.<br>`Off`: no clearnet, Yggdrasil only. |
+| Exits | Public keys (64 hex digits) of [YggMesh exit nodes](https://github.com/ed-asriyan/YggMesh-exit-node). The fastest working one is used, and changed only when it stops working or another one is much faster. Links stay up when it changes. |
+| Your public key | Tap to copy. An exit serves only the keys it knows: give this one to its owner. |
+
+Exits carry IPv4 only, so while the phone routes through them its IPv6 reaches Yggdrasil only.
+
+How it works: Yggdrasil-ng's [Crypto-Key Routing](https://github.com/Revertron/Yggdrasil-ng/blob/master/docs/CKR.md) carries the IPv4 of the phone to the public key of the exit, from the phone's own address, `100.64.0.0/10` plus the last 22 bits of its public key. The exit derives the same address from the key and accepts traffic from it only.
 
 ## See it in action
 To see the mesh working, you need two phones, at least one of them with Android 10+ and Wi-Fi Aware or Bluetooth.

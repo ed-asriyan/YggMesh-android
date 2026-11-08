@@ -124,6 +124,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
+        findViewById<LinearLayoutCompat>(R.id.clearnetTableRow).setOnClickListener {
+            startActivity(Intent(this, ClearnetActivity::class.java))
+        }
+
         settingsRow.isClickable = true
         settingsRow.setOnClickListener {
             val intent = Intent(this, SettingsActivity::class.java)
@@ -154,6 +158,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        findViewById<TextView>(R.id.clearnetValue).text = ClearnetActivity.modeName(this, Clearnet.mode(this))
         LocalBroadcastManager.getInstance(this).registerReceiver(
             receiver, IntentFilter(STATE_INTENT)
         )
