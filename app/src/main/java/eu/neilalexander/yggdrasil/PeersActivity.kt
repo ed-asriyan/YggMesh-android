@@ -49,7 +49,6 @@ class PeersActivity : AppCompatActivity() {
     private lateinit var multicastListenSwitch: Switch
     private lateinit var multicastBeaconSwitch: Switch
     private lateinit var passwordEdit: EditText
-    private lateinit var addPeerButton: ImageButton
 
     private val requestMeshPermissions = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         reconnect(this)
@@ -168,8 +167,7 @@ class PeersActivity : AppCompatActivity() {
 
         setUpPublicPeers()
 
-        addPeerButton = findViewById(R.id.addPeerButton)
-        addPeerButton.setOnClickListener {
+        findViewById<TableRow>(R.id.addPeerPanel).setOnClickListener {
             val view = inflater.inflate(R.layout.dialog_addpeer, null)
             val input = view.findViewById<TextInputEditText>(R.id.addPeerInput)
             val inputLayout = view.findViewById<TextInputLayout>(R.id.addPeerInputLayout)
@@ -336,13 +334,9 @@ class PeersActivity : AppCompatActivity() {
         val peers = config.getJSON().getJSONArray("Peers")
 
         when (peers.length()) {
-            0 -> {
-                configuredTableLayout.visibility = View.GONE
-                configuredTableLabel.text = getString(R.string.peers_no_configured_title)
-            }
+            0 -> configuredTableLayout.visibility = View.GONE
             else -> {
                 configuredTableLayout.visibility = View.VISIBLE
-                configuredTableLabel.text = getString(R.string.peers_configured_title)
 
                 configuredTableLayout.removeAllViewsInLayout()
                 for (i in 0 until peers.length()) {

@@ -30,13 +30,12 @@
     <string name="main_one_peer">1 peer</string>
     <string name="main_many_peers">%d peers</string>
     <string name="main_add_some_peers_title">Note</string>
-    <string name="main_add_some_peers_message">No peers are configured. If there are no multicast peers nearby, you will need to manually configure peers in order for Yggdrasil to connect and work properly.</string>
-    <string name="peers_add_peer">Add Configured Peer</string>
+    <string name="main_add_some_peers_message">No peers are connected yet. With Internet, this device picks public peers by itself; without it, it needs a nearby device running this app. You can also add peers by hand in Peers.</string>
+    <string name="peers_add_peer">Add peer</string>
     <string name="peers_add">Add</string>
     <string name="peers_remove_title">Remove %s?</string>
     <string name="peers_remove">Remove</string>
-    <string name="peers_no_configured_title">No peers currently configured</string>
-    <string name="peers_configured_title">Configured Peers</string>
+    <string name="peers_configured_title">Manual peers</string>
     <string name="peers_no_connected_title">No peers currently connected</string>
     <string name="peers_connected_title">Connected Peers</string>
     <string name="settings_warning_title">Warning</string>
@@ -55,7 +54,7 @@
     <string name="main_version">Version</string>
     <string name="main_unknown">Unknown</string>
     <string name="main_bottom_warning">You must re-enable Yggdrasil after modifying Peers, DNS servers or Settings to make any changes effective.</string>
-    <string name="peer_connectivity_title">Peer Connectivity</string>
+    <string name="peer_connectivity_title">Local peer connectivity</string>
     <string name="discoverable_over_multicast">Discoverable over multicast</string>
     <string name="search_for_multicast_peers">Search for multicast peers</string>
     <string name="nearby_over_bluetooth">Nearby devices over Bluetooth</string>
@@ -94,7 +93,7 @@
     <string name="save">Save</string>
     <string name="no_browser_found_toast">No browser found to open the URL!</string>
     <string name="nearby_mesh_off">Nearby devices: Yggdrasil is not running</string>
-    <string name="public_peers_title">Public peers</string>
+    <string name="public_peers_title">Automatic peers</string>
     <string name="public_peers_add_instance">Add yggpeers instance</string>
     <string name="public_peers_count">Number of peers</string>
     <string name="public_peers_count_off">0 (off)</string>
@@ -104,5 +103,5 @@
     <string name="public_peers_instance_help">Base URL of a yggpeers instance, e.g. https://yggpeers.fsky.io</string>
     <string name="public_peers_instance_invalid">Must be an http(s) URL</string>
     <string name="public_peers_remove_title">Remove %1$s?</string>
-    <string name="public_peers_hint">With Internet of its own, this device picks public Yggdrasil peers by itself, next to the configured ones: from the peers that a majority of these yggpeers instances report up, the fastest. They are checked and picked again at the intervals above, with no restart. Without instances, no public peers are picked.</string>
+    <string name="public_peers_hint">With Internet of its own, this device picks public Yggdrasil peers by itself, next to the manual ones: from the peers that a majority of these yggpeers instances report up, the fastest. They are checked and picked again at the intervals above, with no restart. Without instances, no public peers are picked.</string>
 </resources>

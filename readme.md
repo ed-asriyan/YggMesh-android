@@ -30,10 +30,10 @@ To get updates automatically, use [Obtainium](https://github.com/ImranR98/Obtain
 ### Configuring
 1. Open YggMesh and turn on **Enable Yggdrasil**. Accept the VPN request.
 2. Allow the permissions it asks for: nearby devices (or location on Android 10-12), which Wi-Fi Aware and Bluetooth need to find nearby phones.
-3. Nothing to do for peers: a phone with Internet picks public peers by itself (see Public peers below), and a phone without Internet gets everything through the phones around it. To add a peer of your own, open **Peers** and tap **+**.
+3. Nothing to do for peers: a phone with Internet picks public peers by itself (see Automatic peers below), and a phone without Internet gets everything through the phones around it. To add a peer of your own, open **Peers** and tap **Add peer**.
 4. **DNS servers**: to open `.ygg` sites, pick DNS servers in this section.
 
-#### Peers
+#### Local peer connectivity
 
 | Setting | Meaning |
 |---------|---------|
@@ -43,7 +43,7 @@ To get updates automatically, use [Obtainium](https://github.com/ImranR98/Obtain
 
 Below the switches, the diagnostics show what each transport is doing and how many links it holds. With both switched on, a phone keeps a link over each, and Yggdrasil sends traffic over the faster one.
 
-#### Public peers
+#### Automatic peers
 A phone with Internet of its own picks public Yggdrasil peers by itself, as [YggMesh routers](https://github.com/ed-asriyan/YggMesh) do, next to the peers you add by hand. The peers come from [yggpeers](https://gitfield.org/fsky/yggpeers) instances: only those a majority of the instances report up are used, one per host, and the fastest ones (by ping) are picked. They change while the app runs, with no restart: down ones are replaced at the next check, and the list is picked again at every forced refresh.
 
 | Setting | Meaning |

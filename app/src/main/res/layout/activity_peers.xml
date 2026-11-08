@@ -32,19 +32,6 @@
                     android:textSize="24sp"
                     android:textStyle="bold" />
 
-                <Space
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1" />
-
-                <ImageButton
-                    android:id="@+id/addPeerButton"
-                    android:layout_width="16pt"
-                    android:layout_height="16pt"
-                    android:layout_marginTop="6pt"
-                    android:layout_marginRight="8pt"
-                    android:background="@android:color/transparent"
-                    app:srcCompat="@drawable/ic_baseline_add_circle_24" />
             </LinearLayout>
 
             <ScrollView
@@ -107,7 +94,6 @@
                         android:textSize="12sp" />
 
                     <TableLayout
-                        android:id="@+id/configuredPeersTableLayout"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8pt"
@@ -119,7 +105,26 @@
                         android:paddingTop="2pt"
                         android:paddingRight="4pt"
                         android:paddingBottom="2pt"
-                        android:showDividers="middle" />
+                        android:showDividers="middle">
+
+                        <TableLayout
+                            android:id="@+id/configuredPeersTableLayout"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:divider="#46878787"
+                            android:showDividers="middle" />
+
+                        <TableRow
+                            android:id="@+id/addPeerPanel"
+                            style="@style/SelectableItemStyle">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/peers_add_peer"
+                                android:textColor="?attr/textDefault" />
+                        </TableRow>
+                    </TableLayout>
 
                     <TextView
                         android:layout_width="match_parent"

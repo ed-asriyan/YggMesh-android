@@ -30,13 +30,12 @@
     <string name="main_one_peer">1 пир</string>
     <string name="main_many_peers">%d пира/пиров</string>
     <string name="main_add_some_peers_title">Внимание</string>
-    <string name="main_add_some_peers_message">Не настроено ни одного пира. Если не будет обнаруживаемых пиров в этой сети, то вам надо будет добавить пир вручную, чтобы подключение к Yggdrasil работало как положено.</string>
-    <string name="peers_add_peer">Добавить пира в конфиг</string>
+    <string name="main_add_some_peers_message">Пока нет подключённых пиров. С интернетом устройство само выберет публичных пиров; без него нужно устройство рядом с этим приложением. Пиров можно добавить и вручную в разделе Пиры.</string>
+    <string name="peers_add_peer">Добавить пира</string>
     <string name="peers_add">Добавить</string>
     <string name="peers_remove_title">Убрать %s?</string>
     <string name="peers_remove">Убрать</string>
-    <string name="peers_no_configured_title">Пиры не добавлены</string>
-    <string name="peers_configured_title">Добавленные пиры</string>
+    <string name="peers_configured_title">Ручные пиры</string>
     <string name="peers_no_connected_title">Нет подключенных пиров</string>
     <string name="peers_connected_title">Подключенные пиры</string>
     <string name="settings_warning_title">Внимание</string>
@@ -55,7 +54,7 @@
     <string name="main_version">Версия</string>
     <string name="main_unknown">Не известно</string>
     <string name="main_bottom_warning">Вы должны перезапустить Yggdrasil после изменения пиров, серверов DNS или настроек, чтобы изменения вступили в силу.</string>
-    <string name="peer_connectivity_title">Подключения пиров</string>
+    <string name="peer_connectivity_title">Локальные подключения</string>
     <string name="discoverable_over_multicast">Находимый через multicast</string>
     <string name="search_for_multicast_peers">Искать пиров через multicast</string>
     <string name="nearby_over_bluetooth">Устройства рядом по Bluetooth</string>
@@ -94,7 +93,7 @@
     <string name="save">Сохранить</string>
     <string name="no_browser_found_toast">Не найден браузер для открытия ссылки!</string>
     <string name="nearby_mesh_off">Устройства рядом: Yggdrasil не запущен</string>
-    <string name="public_peers_title">Публичные пиры</string>
+    <string name="public_peers_title">Автоматические пиры</string>
     <string name="public_peers_add_instance">Добавить инстанс yggpeers</string>
     <string name="public_peers_count">Количество пиров</string>
     <string name="public_peers_count_off">0 (выкл.)</string>
@@ -104,5 +103,5 @@
     <string name="public_peers_instance_help">Базовый URL инстанса yggpeers, например https://yggpeers.fsky.io</string>
     <string name="public_peers_instance_invalid">Нужен URL http(s)</string>
     <string name="public_peers_remove_title">Удалить %1$s?</string>
-    <string name="public_peers_hint">Если у устройства есть свой интернет, оно само выбирает публичных пиров Yggdrasil, в дополнение к настроенным: из тех, кого большинство этих инстансов yggpeers считает живыми, самых быстрых. Они проверяются и выбираются заново с интервалами выше, без перезапуска. Без инстансов публичные пиры не выбираются.</string>
+    <string name="public_peers_hint">Если у устройства есть свой интернет, оно само выбирает публичных пиров Yggdrasil, в дополнение к ручным: из тех, кого большинство этих инстансов yggpeers считает живыми, самых быстрых. Они проверяются и выбираются заново с интервалами выше, без перезапуска. Без инстансов публичные пиры не выбираются.</string>
 </resources>
