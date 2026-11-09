@@ -2,7 +2,11 @@ package eu.neilalexander.yggdrasil.mesh
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
 import android.bluetooth.le.AdvertiseCallback
@@ -216,7 +220,9 @@ class BleTransport(private val context: Context, private val mesh: NearbyMesh) {
                 val socket = connect(result, psm, peerId)
                 socket.outputStream.write(mesh.nodeId)
                 socket.outputStream.flush()
+                val gatt = tuneLink(socket.remoteDevice, peerId)
                 mesh.attach(peerId, TRANSPORT, true, socket, socket.inputStream, socket.outputStream) {
+                    closeGatt(gatt)
                     backoff[peerId] = SystemClock.elapsedRealtime() + BACKOFF_MS
                 }
                 status = "searching"
@@ -229,6 +235,37 @@ class BleTransport(private val context: Context, private val mesh: NearbyMesh) {
                 connecting.remove(peerId)
             }
         }
+    }
+
+    /**
+     * L2CAP sockets have no API for the PHY or the connection interval, GATT does,
+     * and both share one connection to the device. Holds a GATT client open on it
+     * to ask for LE 2M and a short interval; the stack may refuse.
+     */
+    private fun tuneLink(device: BluetoothDevice, peerId: String): BluetoothGatt? = try {
+        device.connectGatt(context, false, object : BluetoothGattCallback() {
+            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+                if (newState != BluetoothProfile.STATE_CONNECTED) return
+                gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)
+                gatt.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED)
+                gatt.readPhy()
+            }
+
+            override fun onPhyUpdate(gatt: BluetoothGatt, txPhy: Int, rxPhy: Int, status: Int) {
+                Log.i(TAG, "PHY to $peerId: tx $txPhy, rx $rxPhy, status $status")
+            }
+
+            override fun onPhyRead(gatt: BluetoothGatt, txPhy: Int, rxPhy: Int, status: Int) {
+                Log.i(TAG, "PHY to $peerId now: tx $txPhy, rx $rxPhy, status $status")
+            }
+        }, BluetoothDevice.TRANSPORT_LE)
+    } catch (e: Exception) {
+        Log.w(TAG, "Tuning the link to $peerId failed: $e")
+        null
+    }
+
+    private fun closeGatt(gatt: BluetoothGatt?) {
+        try { gatt?.close() } catch (_: Exception) {}
     }
 
     private fun connect(result: ScanResult, psm: Int, peerId: String): BluetoothSocket {
@@ -270,7 +307,9 @@ class BleTransport(private val context: Context, private val mesh: NearbyMesh) {
                     try {
                         val id = ByteArray(NODE_ID_LENGTH)
                         DataInputStream(socket.inputStream).readFully(id)
-                        mesh.attach(NearbyMesh.bytesToHex(id), TRANSPORT, false, socket, socket.inputStream, socket.outputStream)
+                        val peerId = NearbyMesh.bytesToHex(id)
+                        val gatt = tuneLink(socket.remoteDevice, peerId)
+                        mesh.attach(peerId, TRANSPORT, false, socket, socket.inputStream, socket.outputStream) { closeGatt(gatt) }
                     } catch (e: Exception) {
                         Log.w(TAG, "Inbound link failed: $e")
                         try { socket.close() } catch (_: Exception) {}

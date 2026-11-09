@@ -69,6 +69,12 @@ Notes:
   builds, reboot it first, or the results mean nothing.
 - On Android 11 an IPv4 address that is not the first of a VPN crashes the app
   when a data path comes up (see establishTun).
+- BLE between that pair, with LE 2M: about 0.6 Mbit/s from the Pixel 10 and
+  0.15 Mbit/s from the Pixel 2, with seconds of latency under load. The link
+  starts on LE 1M; the GATT client in BleTransport moves it to 2M, which barely
+  changed the speed. A third device linked over BLE cut it 3-5 times in early,
+  rougher tests. IfMTU 1280 changed nothing between the phones and may help
+  through an exit (0.31-0.36 against 0.27-0.28 Mbit/s, two runs each).
 - While a Wi-Fi Aware data path was up, LTE on the Pixel 10 slowed down to
   1-4 s of latency.
 
