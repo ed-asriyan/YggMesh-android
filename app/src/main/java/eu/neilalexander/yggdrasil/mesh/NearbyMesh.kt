@@ -165,12 +165,13 @@ class NearbyMesh(
             bridge.close()
             return false
         }
-        // When both sides opened a link, both keep the one the lower node ID opened
+        // When both sides opened a link, both keep the one the lower node ID opened.
+        // Over Wi-Fi Aware only one side opens, so a new link replaces one that has died.
         if (peerId != null) {
             val existing = synchronized(bridges) { bridges.filter { it.peerId == peerId && it.transport == transport } }
             if (existing.isNotEmpty()) {
                 val lowerOpened = outbound == isInitiatorFor(hexToBytes(peerId))
-                if (!lowerOpened) {
+                if (!lowerOpened && transport != WIFI_AWARE) {
                     bridge.close()
                     return false
                 }

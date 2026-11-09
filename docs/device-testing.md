@@ -58,9 +58,17 @@ Notes:
 
 - BLE links come up in about 20 s. Dialing worked only from the Pixel 2 to the
   Pixel 10, so the higher node ID dials after 5 s too.
-- Wi-Fi Aware links between that pair live 30-60 s: the Wi-Fi firmware ends
-  the data path, and the link comes back in 15-45 s. A BLE link stays up next
-  to it. Open (unencrypted) data paths came up and carried nothing.
+- Wi-Fi Aware between that pair is still not stable: links live from 10 s to
+  about 3 min, and most setups fail. A BLE link stays up next to it. Open
+  (unencrypted) data paths came up and carried nothing. Test on newer pairs too:
+  how much of this is the Pixel 2 is not known.
+- A Pixel 2 as the initiator never finished a setup (0 of 9), and did as the
+  responder. The lower node ID initiates, which on that pair is the Pixel 2, so
+  it may not link at all. A setup abandoned halfway can wedge its firmware until a
+  reboot (status 9003 at once, Wi-Fi off and on does not help): when comparing
+  builds, reboot it first, or the results mean nothing.
+- On Android 11 an IPv4 address that is not the first of a VPN crashes the app
+  when a data path comes up (see establishTun).
 - While a Wi-Fi Aware data path was up, LTE on the Pixel 10 slowed down to
   1-4 s of latency.
 

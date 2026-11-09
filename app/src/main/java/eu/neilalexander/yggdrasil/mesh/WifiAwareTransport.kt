@@ -30,6 +30,7 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.annotation.RequiresApi
 import java.io.DataInputStream
+import java.nio.ByteBuffer
 import java.net.Inet6Address
 import java.net.ServerSocket
 import java.util.concurrent.ConcurrentHashMap
@@ -40,14 +41,19 @@ private const val TAG = "MeshWifiAware"
 private const val SERVICE_NAME = "yggdrasil-mesh"
 private const val TRANSPORT = WIFI_AWARE
 
-// Wi-Fi Aware only lets the responder announce a port over an encrypted data
-// path, so the data path needs a passphrase. It is not a secret: Yggdrasil
-// authenticates and encrypts everything end to end on its own. Open data paths
-// were tried: between a Pixel 10 and a Pixel 2 they came up and carried nothing.
+// Not a secret: Yggdrasil authenticates and encrypts everything end to end on its
+// own. Open data paths were tried: between a Pixel 10 and a Pixel 2 they came up
+// and carried nothing.
 private const val PASSPHRASE = "yggdrasil-mesh-link"
 
 private const val NETWORK_TIMEOUT_MS = 30_000
-private const val RETRY_DELAY_MS = 10_000L
+private const val RETRY_DELAY_MS = 3_000L
+// How long the initiator waits for the responder to answer its hello
+private const val READY_TIMEOUT_MS = 5_000L
+// requestNetwork returns before the system has the request. A data path request
+// that arrives before it is dropped, so the responder gives it this long.
+private const val READY_DELAY_MS = 300L
+private const val READY_LENGTH = NODE_ID_LENGTH + Short.SIZE_BYTES
 private const val RESUBSCRIBE_DELAY_MS = 2 * 60_000L
 private const val MIN_RESUBSCRIBE_INTERVAL_MS = 30_000L
 private const val MAX_ATTEMPTS = 3
@@ -57,11 +63,20 @@ private const val MAX_PENDING_RESPONSES = 3
 
 /**
  * Every node both publishes and subscribes to [SERVICE_NAME], carrying its node
- * ID as service-specific info. When the subscriber of a pair is the initiator
- * (see [NearbyMesh.isInitiatorFor]) it messages its node ID to the publisher,
- * and both sides request a NAN data path: the publisher as responder, with a
- * TCP port, and the subscriber as initiator, which connects to that port over
- * the peer's link-local IPv6 address.
+ * ID as service-specific info. The subscriber of a pair that initiates (see
+ * [NearbyMesh.isInitiatorFor]) messages its node ID to the publisher, which
+ * gives the publisher the peer handle that a responder's request needs.
+ * The publisher requests a NAN data path as responder and only then messages
+ * back its node ID and TCP port. The subscriber then requests the data path as
+ * initiator and connects to that port over the peer's link-local IPv6 address.
+ *
+ * The order matters: a data path request reaching a responder with no network
+ * request of its own is dropped ("can't find a request") and the setup fails.
+ * On a Pixel 2 a setup abandoned halfway can also wedge the Wi-Fi firmware until
+ * a reboot: every later attempt fails at once with status 9003.
+ *
+ * The port travels in the message as nothing needs the port in the data path
+ * setup. When a link closes the initiator says hello again right away.
  *
  * A subscribe session reports each peer once, so a peer that left and came
  * back is found only by a newer session. A new one starts every
@@ -102,9 +117,12 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
     private var stopped = false
     private var messageId = 0
 
-    private class Initiated(val session: SubscribeDiscoverySession, val callback: ConnectivityManager.NetworkCallback)
+    private class Initiated(val session: SubscribeDiscoverySession, val peer: PeerHandle) {
+        // Null until the responder answers the hello
+        var callback: ConnectivityManager.NetworkCallback? = null
+    }
 
-    // Data path requests we hold, by peer node ID. Releasing one tears the data path down.
+    // Peers we are linking to, by node ID. Releasing a callback tears the data path down.
     private val initiated = ConcurrentHashMap<String, Initiated>()
     private abstract class Responder(val peerId: String) : ConnectivityManager.NetworkCallback() {
         @Volatile var available = false
@@ -178,7 +196,7 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
 
     private fun detach() {
         handler.removeCallbacksAndMessages(null)
-        (initiated.values.map { it.callback } + responded).forEach { release(it) }
+        (initiated.values.mapNotNull { it.callback } + responded).forEach { release(it) }
         initiated.clear()
         responded.clear()
         failedAttempts.clear()
@@ -242,9 +260,16 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
             override fun onServiceDiscovered(peer: PeerHandle, info: ByteArray, matchFilter: List<ByteArray>) {
                 val discovery = own ?: return
                 if (info.size != NODE_ID_LENGTH) return
-                if (seen.add(NearbyMesh.bytesToHex(info))) Log.i(TAG, "Found ${NearbyMesh.bytesToHex(info)}")
+                val peerId = NearbyMesh.bytesToHex(info)
+                if (seen.add(peerId)) Log.i(TAG, "Found $peerId")
                 if (!mesh.isInitiatorFor(info)) return
-                initiate(discovery, peer, NearbyMesh.bytesToHex(info))
+                initiate(discovery, peer, peerId)
+            }
+
+            override fun onMessageReceived(peer: PeerHandle, message: ByteArray) {
+                if (message.size != READY_LENGTH) return
+                val port = ByteBuffer.wrap(message, NODE_ID_LENGTH, Short.SIZE_BYTES).short.toInt() and 0xffff
+                requestDataPath(peer, NearbyMesh.bytesToHex(message.copyOf(NODE_ID_LENGTH)), port)
             }
 
             override fun onSessionTerminated() {
@@ -277,11 +302,28 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
         return true
     }
 
+    /** Says hello to the peer; [requestDataPath] goes on when it answers. */
     private fun initiate(discovery: SubscribeDiscoverySession, peer: PeerHandle, peerId: String) {
         if (discovery !in subscribeSessions) return
         if (initiated.containsKey(peerId) || mesh.hasLink(peerId, TRANSPORT)) return
+        val entry = Initiated(discovery, peer)
+        initiated[peerId] = entry
         discovery.sendMessage(peer, messageId++, mesh.nodeId)
+        handler.postDelayed({
+            if (initiated[peerId] === entry && entry.callback == null) {
+                Log.w(TAG, "No answer from $peerId")
+                status = "no answer from ${peerId.take(8)}"
+                initiated.remove(peerId)
+                retry(discovery, peer, peerId)
+            }
+        }, READY_TIMEOUT_MS)
+    }
 
+    /** The responder holds its request now, so the data path can come up. */
+    private fun requestDataPath(peer: PeerHandle, peerId: String, port: Int) {
+        val entry = initiated[peerId] ?: return
+        if (entry.callback != null) return
+        val discovery = entry.session
         val specifier = WifiAwareNetworkSpecifier.Builder(discovery, peer)
             .setPskPassphrase(PASSPHRASE)
             .build()
@@ -291,23 +333,23 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
                 val info = capabilities.transportInfo as? WifiAwareNetworkInfo ?: return
                 val address = info.peerIpv6Addr
-                if (address == null || info.port <= 0) {
-                    Log.w(TAG, "Data path to $peerId has no peer address or port")
+                if (address == null) {
+                    Log.w(TAG, "Data path to $peerId has no peer address")
                     return
                 }
                 if (connecting) return
                 connecting = true
-                thread(name = "mesh-wifi-aware-connect") { connect(network, address, info.port, peerId, this) }
+                thread(name = "mesh-wifi-aware-connect") { connect(network, address, port, peerId, discovery, peer, this) }
             }
 
-            override fun onLost(network: Network) = retry(discovery, peer, peerId, this)
+            override fun onLost(network: Network) = failed(discovery, peer, peerId, this)
             override fun onUnavailable() {
                 Log.w(TAG, "Data path to $peerId unavailable")
                 status = "data path to ${peerId.take(8)} failed"
-                retry(discovery, peer, peerId, this)
+                failed(discovery, peer, peerId, this)
             }
         }
-        initiated[peerId] = Initiated(discovery, callback)
+        entry.callback = callback
         if (!request(specifier, callback)) initiated.remove(peerId)
     }
 
@@ -316,6 +358,8 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
         address: Inet6Address,
         port: Int,
         peerId: String,
+        discovery: SubscribeDiscoverySession,
+        peer: PeerHandle,
         callback: ConnectivityManager.NetworkCallback,
     ) {
         try {
@@ -325,16 +369,16 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
             socket.getOutputStream().apply { write(mesh.nodeId); flush() }
             handler.post { failedAttempts.remove(peerId) }
             mesh.attach(peerId, TRANSPORT, true, socket, socket.getInputStream(), socket.getOutputStream()) {
-                handler.post { if (removeInitiated(peerId, callback)) release(callback) }
+                failed(discovery, peer, peerId, callback)
             }
         } catch (e: Exception) {
             Log.w(TAG, "Connecting to $peerId failed: $e")
             status = "connecting to ${peerId.take(8)} failed: ${e.message}"
-            handler.post { if (removeInitiated(peerId, callback)) release(callback) }
+            failed(discovery, peer, peerId, callback)
         }
     }
 
-    private fun retry(
+    private fun failed(
         discovery: SubscribeDiscoverySession,
         peer: PeerHandle,
         peerId: String,
@@ -343,19 +387,23 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
         handler.post {
             if (!removeInitiated(peerId, callback)) return@post
             release(callback)
-            // The peer handle stays valid while the peer is in range. Once it is
-            // gone, give up: a newer subscribe session finds it when it comes back.
-            val attempts = (failedAttempts[peerId] ?: 0) + 1
-            if (attempts >= MAX_ATTEMPTS) {
-                // Look for the peer again soon rather than at the next periodic
-                // resubscribe, up to minutes away: its handle may be stale.
-                failedAttempts.remove(peerId)
-                handler.postDelayed({ rediscover(peerId) }, MIN_RESUBSCRIBE_INTERVAL_MS)
-                return@post
-            }
-            failedAttempts[peerId] = attempts
-            handler.postDelayed({ initiate(discovery, peer, peerId) }, RETRY_DELAY_MS)
+            retry(discovery, peer, peerId)
         }
+    }
+
+    private fun retry(discovery: SubscribeDiscoverySession, peer: PeerHandle, peerId: String) {
+        // The peer handle stays valid while the peer is in range. Once it is
+        // gone, give up: a newer subscribe session finds it when it comes back.
+        val attempts = (failedAttempts[peerId] ?: 0) + 1
+        if (attempts >= MAX_ATTEMPTS) {
+            // Look for the peer again right away: its handle may be stale. Not
+            // rediscover(), whose limit is for how often BLE sees a peer.
+            failedAttempts.remove(peerId)
+            handler.postDelayed({ if (!initiated.containsKey(peerId)) subscribe() }, RETRY_DELAY_MS)
+            return
+        }
+        failedAttempts[peerId] = attempts
+        handler.postDelayed({ initiate(discovery, peer, peerId) }, RETRY_DELAY_MS)
     }
 
     private fun respond(peer: PeerHandle, peerId: String) {
@@ -376,7 +424,6 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
 
         val specifier = WifiAwareNetworkSpecifier.Builder(discovery, peer)
             .setPskPassphrase(PASSPHRASE)
-            .setPort(port)
             .build()
         val callback = object : Responder(peerId) {
             override fun onAvailable(network: Network) { available = true }
@@ -394,7 +441,16 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
         }
         status = "answering ${peerId.take(8)}"
         responded.add(callback)
-        if (!request(specifier, callback)) responded.remove(callback)
+        if (!request(specifier, callback)) {
+            responded.remove(callback)
+            return
+        }
+        handler.postDelayed({
+            if (publishSession === discovery) {
+                val ready = ByteBuffer.allocate(READY_LENGTH).put(mesh.nodeId).putShort(port.toShort()).array()
+                discovery.sendMessage(peer, messageId++, ready)
+            }
+        }, READY_DELAY_MS)
     }
 
     private fun forget(responder: Responder) {

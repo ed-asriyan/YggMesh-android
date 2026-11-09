@@ -172,6 +172,12 @@ open class PacketTunnelProvider: VpnService() {
         val routeAll = clearnet?.routeAll == true
         val address = yggdrasil.addressString
         val builder = Builder()
+        // IPv4 goes first: the system names any later IPv4 address an alias, tun0:1,
+        // and on Android 11 NetworkInterface.getAll() throws a NullPointerException on
+        // such a name. Parsing WifiAwareNetworkInfo calls it on the system's
+        // ConnectivityThread, so every Wi-Fi Aware data path killed the process.
+        if (routeAll) builder.addAddress(Clearnet.ipv4ForKey(yggdrasil.publicKeyString), 32)
+        builder
             .addAddress(address, 7)
             .addRoute("200::", 7)
             // We do this to trick the DNS-resolver into thinking that we have "regular" IPv6,
@@ -213,8 +219,7 @@ open class PacketTunnelProvider: VpnService() {
             // carry IPv4 only, and it would show the IP of this device. The sockets
             // of this app, the peerings among them, stay outside of the VPN:
             // through it they would need Yggdrasil to reach Yggdrasil.
-            builder.addAddress(Clearnet.ipv4ForKey(yggdrasil.publicKeyString), 32)
-                .addRoute("0.0.0.0", 0)
+            builder.addRoute("0.0.0.0", 0)
                 .addRoute("::", 0)
                 .addDisallowedApplication(packageName)
             Clearnet.dnsServers.forEach { builder.addDnsServer(it) }
