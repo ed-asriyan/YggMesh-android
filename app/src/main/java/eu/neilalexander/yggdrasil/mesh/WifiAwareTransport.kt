@@ -48,6 +48,13 @@ private const val PASSPHRASE = "yggdrasil-mesh-link"
 
 private const val NETWORK_TIMEOUT_MS = 30_000
 private const val RETRY_DELAY_MS = 3_000L
+// A publish or subscribe the system does not answer within this means a dead session
+private const val SESSION_ANSWER_MS = 10_000L
+// After Wi-Fi Aware comes back the system recreates its interfaces: a session
+// attached meanwhile dies a few seconds later (seen on a Pixel 2, Android 11)
+private const val SETTLE_MS = 5_000L
+// A subscribe this soon after attaching checks that the session lives
+private const val PROBE_AFTER_ATTACH_MS = 15_000L
 // How long the initiator waits for the responder to answer its hello
 private const val READY_TIMEOUT_MS = 5_000L
 // requestNetwork returns before the system has the request. A data path request
@@ -141,7 +148,11 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             handler.post {
-                if (manager.isAvailable) attach() else unavailable()
+                if (manager.isAvailable) {
+                    handler.postDelayed({ if (manager.isAvailable) attach() }, SETTLE_MS)
+                } else {
+                    unavailable()
+                }
             }
         }
     }
@@ -165,6 +176,31 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
         }
     }
 
+    // The publish or subscribe waiting for the system to confirm it, see expectAnswer
+    private var awaited: Any? = null
+
+    /**
+     * Attaches again unless the system confirms [token] in time. Right after Wi-Fi
+     * came back on, a Pixel 2 (Android 11) dropped the session it had just given
+     * us without telling us: every subscribe on it failed in silence
+     * ("subscribeLocal: no client exists") and nothing was found for 6 minutes.
+     */
+    private fun expectAnswer(token: Any) {
+        awaited = token
+        handler.postDelayed({
+            if (awaited === token && session != null && !stopped) {
+                Log.w(TAG, "The system does not answer, attaching again")
+                status = "session lost, attaching again"
+                detach()
+                attach()
+            }
+        }, SESSION_ANSWER_MS)
+    }
+
+    private fun answered(token: Any) {
+        if (awaited === token) awaited = null
+    }
+
     private fun unavailable() {
         detach()
         status = "unavailable (Wi-Fi off, hotspot on, or location off before Android 13)"
@@ -184,6 +220,7 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
                 publish()
                 subscribe()
                 scheduleResubscribe()
+                handler.postDelayed({ if (session === s) subscribe() }, PROBE_AFTER_ATTACH_MS)
             }
 
             override fun onAttachFailed() {
@@ -213,9 +250,16 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
             .setServiceName(SERVICE_NAME)
             .setServiceSpecificInfo(mesh.nodeId)
             .build()
+        val token = Any()
         session?.publish(config, object : DiscoverySessionCallback() {
             override fun onPublishStarted(s: PublishDiscoverySession) {
+                answered(token)
                 publishSession = s
+            }
+
+            override fun onSessionConfigFailed() {
+                answered(token)
+                Log.w(TAG, "Publishing failed")
             }
 
             override fun onMessageReceived(peer: PeerHandle, message: ByteArray) {
@@ -227,6 +271,7 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
                 publishSession = null
             }
         }, handler)
+        expectAnswer(token)
     }
 
     /** Finds the peers seen over BLE again over Wi-Fi Aware. */
@@ -243,16 +288,19 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
         val config = SubscribeConfig.Builder()
             .setServiceName(SERVICE_NAME)
             .build()
+        val token = Any()
         session?.subscribe(config, object : DiscoverySessionCallback() {
             private var own: SubscribeDiscoverySession? = null
 
             override fun onSubscribeStarted(s: SubscribeDiscoverySession) {
+                answered(token)
                 own = s
                 subscribeSessions.add(s)
                 closeUnusedSubscribeSessions()
             }
 
             override fun onSessionConfigFailed() {
+                answered(token)
                 Log.w(TAG, "Subscribing failed")
                 status = "subscribing failed"
             }
@@ -276,6 +324,7 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
                 own?.let { subscribeSessions.remove(it) }
             }
         }, handler)
+        expectAnswer(token)
     }
 
     // Closing a session could tear down the data paths requested through it,
