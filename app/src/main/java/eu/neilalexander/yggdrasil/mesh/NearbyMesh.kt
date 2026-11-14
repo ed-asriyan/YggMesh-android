@@ -26,6 +26,9 @@ const val BLE = "ble"
 // Yggdrasil public key, short enough to fit a BLE advertisement.
 const val NODE_ID_LENGTH = 8
 
+// Time for the node to see a replaced link go before the new one comes in
+private const val LINK_HANDOVER_MS = 1_000L
+
 /**
  * Finds nearby devices running this app and peers Yggdrasil with them, with no
  * user interaction: Wi-Fi Aware when the device supports it, BLE L2CAP as a
@@ -164,6 +167,23 @@ class NearbyMesh(
         if (!running) {
             bridge.close()
             return false
+        }
+        // Yggdrasil-ng keeps one link per peer and direction: it drops a second one at
+        // once. Our links all come in to its local listener, so of BLE and Wi-Fi Aware
+        // only the first one up carried traffic, and BLE, up first, kept Wi-Fi Aware out
+        // for good (seen between two Pixel 2). Wi-Fi Aware, much faster, takes over
+        // from BLE; BLE stays off while it lives and comes back when it drops.
+        if (peerId != null && transport == BLE && hasLink(peerId, WIFI_AWARE)) {
+            bridge.close()
+            return false
+        }
+        if (peerId != null && transport == WIFI_AWARE) {
+            val ble = synchronized(bridges) { bridges.filter { it.peerId == peerId && it.transport == BLE } }
+            if (ble.isNotEmpty()) {
+                ble.forEach { it.close() }
+                // Until the node sees the BLE link go, it would drop this one
+                Thread.sleep(LINK_HANDOVER_MS)
+            }
         }
         // When both sides opened a link, both keep the one the lower node ID opened.
         // Over Wi-Fi Aware only one side opens, so a new link replaces one that has died.

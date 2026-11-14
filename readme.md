@@ -41,7 +41,7 @@ To get updates automatically, use [Obtainium](https://github.com/ImranR98/Obtain
 | Nearby devices over Bluetooth | Find and link to phones running the app over Bluetooth LE. Slower, but works on almost every phone. |
 | Nearby devices over Wi-Fi Aware | Find and link to phones running the app over Wi-Fi Aware. Faster. Greyed out on phones without Wi-Fi Aware. |
 
-Below the switches, the diagnostics show what each transport is doing and how many links it holds. With both switched on, a phone keeps a link over each, and Yggdrasil sends traffic over the faster one.
+Below the switches, the diagnostics show what each transport is doing and how many links it holds. With both switched on, Wi-Fi Aware takes over from Bluetooth when it comes up (Yggdrasil keeps one link per peer), and Bluetooth comes back when Wi-Fi Aware drops.
 
 #### Automatic peers
 A phone with Internet of its own picks public Yggdrasil peers by itself, as [YggMesh routers](https://github.com/ed-asriyan/YggMesh) do, next to the peers you add by hand. The peers come from [yggpeers](https://gitfield.org/fsky/yggpeers) instances: only those a majority of the instances report up are used, one per host, and the fastest ones (by ping) are picked. They change while the app runs, with no restart: down ones are replaced at the next check, and the list is picked again at every forced refresh.

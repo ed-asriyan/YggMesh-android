@@ -52,9 +52,9 @@ private const val CONNECT_RETRY_MS = 1_500L
  * service, and the initiator of each pair (see [NearbyMesh.isInitiatorFor])
  * opens the channel; the other one does too when the peer stays unlinked, as
  * dialing fails one way only on some stacks. The opener sends its node ID
- * first, so both sides know the peer of every link. A BLE link stays up next
- * to a Wi-Fi Aware one to the same peer: Yggdrasil routes over the one with
- * the lower latency, and BLE carries on when Wi-Fi Aware drops.
+ * first, so both sides know the peer of every link. A peer linked over Wi-Fi
+ * Aware is not dialed over BLE, much slower: the node keeps one link per peer
+ * (see [NearbyMesh.attach]). BLE comes back when Wi-Fi Aware drops.
  *
  * The advertisement carries the service UUID, which scans filter on (a filter
  * every BLE stack offloads well), and the scan response its service data: the
@@ -202,7 +202,7 @@ class BleTransport(private val context: Context, private val mesh: NearbyMesh) {
         val peerId = NearbyMesh.bytesToHex(id)
         if (seen.add(peerId)) Log.i(TAG, "Found $peerId")
         if (mesh.isInitiatorFor(id)) mesh.seenNearby(peerId)
-        if (mesh.hasLink(peerId, TRANSPORT)) {
+        if (mesh.hasLink(peerId)) {
             unlinkedSince.remove(peerId)
             return
         }
