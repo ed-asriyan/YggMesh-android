@@ -1,5 +1,6 @@
 package eu.neilalexander.yggdrasil.mesh
 
+import android.os.SystemClock
 import android.util.Log
 import java.io.Closeable
 import java.io.InputStream
@@ -10,6 +11,10 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 private const val TAG = "MeshLinkBridge"
+
+// The node sends keepalives every few seconds: this much silence is a dead link
+private const val MAX_SILENCE_MS = 30_000L
+private const val SILENCE_CHECK_MS = 5_000L
 
 /**
  * Splices a byte stream from a nearby transport (Wi-Fi Aware socket, BLE L2CAP
@@ -38,19 +43,44 @@ class LinkBridge(
         tcpNoDelay = true
     }
 
+    // When the peer last sent something; Yggdrasil sends keepalives every few seconds
+    @Volatile
+    private var heardAt = SystemClock.elapsedRealtime()
+
     fun start() {
         Log.i(TAG, "Link up: $transport ${peerId ?: "?"} ${if (outbound) "outbound" else "inbound"}")
         thread(name = "mesh-$transport-up") { pump(remoteIn, local.getOutputStream(), "from peer") }
         thread(name = "mesh-$transport-down") { pump(local.getInputStream(), remoteOut, "from local node") }
+        thread(name = "mesh-$transport-watch", isDaemon = true) { watch() }
+    }
+
+    /**
+     * Closes the link once the peer has been silent too long. A Wi-Fi Aware data
+     * path that died under a socket left both pumps blocked for good, one in a
+     * read, one in a write, with no error: the link looked up, and BLE stayed
+     * out for it (seen on a Pixel 2, after its peer restarted).
+     */
+    private fun watch() {
+        while (!closed.get()) {
+            try { Thread.sleep(SILENCE_CHECK_MS) } catch (_: InterruptedException) { return }
+            if (closed.get()) return
+            val silent = SystemClock.elapsedRealtime() - heardAt
+            if (silent > MAX_SILENCE_MS) {
+                Log.i(TAG, "Link $transport ${peerId ?: "?"} closing, peer silent for ${silent / 1000} s")
+                close()
+            }
+        }
     }
 
     private fun pump(from: InputStream, to: OutputStream, direction: String) {
         val buf = ByteArray(16384)
         var reason = "$direction: end of stream"
+        val fromPeer = from === remoteIn
         try {
             while (!closed.get()) {
                 val n = from.read(buf)
                 if (n < 0) break
+                if (fromPeer) heardAt = SystemClock.elapsedRealtime()
                 to.write(buf, 0, n)
                 to.flush()
             }

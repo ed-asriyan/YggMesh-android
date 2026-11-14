@@ -50,6 +50,7 @@ private const val NETWORK_TIMEOUT_MS = 30_000
 private const val RETRY_DELAY_MS = 3_000L
 // A publish or subscribe the system does not answer within this means a dead session
 private const val SESSION_ANSWER_MS = 10_000L
+private const val MAX_SUBSCRIBE_FAILURES = 2
 // After Wi-Fi Aware comes back the system recreates its interfaces: a session
 // attached meanwhile dies a few seconds later (seen on a Pixel 2, Android 11)
 private const val SETTLE_MS = 5_000L
@@ -178,6 +179,7 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
 
     // The publish or subscribe waiting for the system to confirm it, see expectAnswer
     private var awaited: Any? = null
+    private var subscribeFailures = 0
 
     /**
      * Attaches again unless the system confirms [token] in time. Right after Wi-Fi
@@ -294,6 +296,7 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
 
             override fun onSubscribeStarted(s: SubscribeDiscoverySession) {
                 answered(token)
+                subscribeFailures = 0
                 own = s
                 subscribeSessions.add(s)
                 closeUnusedSubscribeSessions()
@@ -302,6 +305,15 @@ class WifiAwareTransport(private val context: Context, private val mesh: NearbyM
             override fun onSessionConfigFailed() {
                 answered(token)
                 Log.w(TAG, "Subscribing failed")
+                // A session that refuses every subscribe is broken (seen on a
+                // Pixel 2 after its peer restarted): attach again
+                if (++subscribeFailures >= MAX_SUBSCRIBE_FAILURES && session != null) {
+                    Log.w(TAG, "Subscribing keeps failing, attaching again")
+                    subscribeFailures = 0
+                    detach()
+                    attach()
+                    return
+                }
                 status = "subscribing failed"
             }
 
